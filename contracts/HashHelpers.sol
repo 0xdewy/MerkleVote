@@ -24,5 +24,11 @@ contract HashHelpers {
     return keccak256(abi.encodePacked(_paramOne, _paramTwo));
   }
 
+  function leaf(address _user, uint _balance)
+  public
+  pure
+  returns (bytes32) {
+    return keccak256(abi.encodePacked(_user, _balance)); 
+  }
 
 }

@@ -27,6 +27,8 @@ contract('MerkleVote', async(accounts) => {
   let merkleVote;
   let hash;
 
+  let tree;
+
   it('Deploy erc20', async() => {
     token = await ERC20.new(totalSupply, 'SomeToken', 18, 'ST');
   });
@@ -34,8 +36,6 @@ contract('MerkleVote', async(accounts) => {
   it('Distribute token equally', async() => {
     for (let i = 0; i < users.length; i++){
       await token.transfer(users[i], tokenPerUser);
-      console.log(await token.balanceOf(users[i]));
-      console.log(tokenPerUser);
       assert.equal(bn(await token.balanceOf(users[i])).eq(tokenPerUser), true);
     }
   });
@@ -49,13 +49,30 @@ contract('MerkleVote', async(accounts) => {
     merkleVote = await MerkleVote.new(token.address);
   });
 
+  //           [0xA37]                           (root)
+  //    [0x234        0x264]                       (prepareTree)
+  // [user1, user2, user3, user4]                 user = sha3(address, balance)
   it('Create new vote', async() => {
     let methodString = "transfer(address, uint256)";
     let methodID = await hash.getMethodID(methodString);
     let parameterHash = await hash.getParameterHash(receiveTransfer, 5000*WEI);
     voteID = await hash.getVoteID(token.address, methodID , parameterHash);
+    tree = await merkleVote.prepareTree(users);
+    console.log("leafs of tree: ", tree);
     await merkleVote.createVote(users, voteID);
-    console.log("merkle root for voteID: ", voteID, "is: ", await merkleVote.merkleRoot(voteID));
+    root = await merkleVote.merkleRoot(voteID);
+    assert.equal(await merkleVote.getHash(tree[0], tree[1]), root);
+    console.log("merkle root for voteID: ", voteID, "is: ", root);
+  });
+
+
+  it ("Verify merkle tree for user1", async() => {
+    let merkleProof = [await hash.leaf(user2, await token.balanceOf(user2))];
+    merkleProof[1] = tree[1];
+    console.log("merkle proof is: ", merkleProof);
+    let leaf = await hash.leaf(user1, await token.balanceOf(user1));
+    let valid = await merkleVote.verifyProof(merkleProof, root, leaf);
+    assert.equal(valid, true);
   });
 
 });
