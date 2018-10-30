@@ -1,38 +1,24 @@
 pragma solidity 0.4.24;
 
-
-interface ERC20 {
+interface Token {
   function totalSupply() external view returns (uint256);
   function balanceOf(address _who) external view returns (uint256);
 }
 
 import './SafeMath.sol';
 
-// TODO: set expiry for votes
 contract MerkleVote {
-    using SafeMath for uint;
 
-  // @dev methodID = bytes4(sha3("functionName(parameterType, parameterType)")
-  // @dev functionID = sha3(contractAddress, methodID)
-  // @dev numVotes is sha3(contractAddress, methodID, sha3(parameter, parameter)))
-  // @dev quorumLevel = percentage of tokens required to be locked for the execution of a function
-
-  ERC20 public votingToken;
-
-  uint public securityDeposit;           // Deposit required to submit a new vote. Can be lost if merkle root is invalid
-
+  Token public votingToken;
 
   mapping (bytes32 => bool) public voted;     // sha3(functionVoteID, msg.sender) => boolean
   mapping (bytes32 => uint) public numVotes;    // sha3(contractAddress, methodID, parameterHash)  => numberOfVotes
   mapping (bytes32 => bytes32) public merkleRoot;   //  root node of a vote merkle tree
 
-
   constructor(address _votingToken)
   public {
-      votingToken = ERC20(_votingToken);
+      votingToken = Token(_votingToken);
   }
-
-
 
   function vote(bytes32 _voteID, uint _balanceAtSnapshot, bytes32 _root, bytes32[] _proof)
   external
@@ -48,26 +34,30 @@ contract MerkleVote {
   public
   returns (bool) {
       bytes32[] memory elements = prepareTree(_tokenHolders);
-      // bytes32 root = createRootProof(elements);
+      bytes32 root = createRootProof(elements);
       // merkleRoot[_voteID] = root;
       return true;
   }
 
 
-  // function createRootProof(bytes32[] elements)
-  // public
-  // pure
-  // returns (bytes32) {
-  //   bytes32[] memory nextElements = new bytes32[](elements.length);
-  //   if (elements.length == 1) return elements[0];
-  //   for (uint i = 0; i < elements.length; i+=2) {
-  //     nextElements[i] = getHash(elements[i], elements[i+1]);
-  //   }
-  //   if (elements.length % 2 != 0){
-  //     nextElements[elements.length] = keccak256(abi.encodePacked(elements[elements.length-1]));
-  //   }
-  //   return createRootProof(nextElements);
-  // }
+  function createRootProof(bytes32[] elements)
+  public
+  pure
+  returns (bytes32) {
+    // bytes32[] memory nextElements = new bytes32[](elements.length);
+    uint16 numElements = uint16(elements.length);
+    while (numElements > 1) {
+      for (uint i = 0; i < numElements; i+=2) {
+        elements[i] = getHash(elements[i], elements[i+1]);
+      }
+      if (elements.length % 2 != 0){
+        elements[(numElements / 2) + 1] = keccak256(abi.encodePacked(elements[numElements-1]));
+        numElements = (numElements / 2) + 1;
+      }
+      else { numElements = numElements / 2; }
+    }
+    return elements[0];
+  }
 
   function prepareTree(address[] _tokenHolders)
   public

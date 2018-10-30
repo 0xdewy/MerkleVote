@@ -55,47 +55,47 @@ contract ERC20 {
         return true;
     }
 
-    // ------------------------------------------------------------------------
-    // Transfer _amount of tokens if _from has allowed msg.sender to do so
-    //  _from must have enough tokens + must have approved msg.sender
-    // ------------------------------------------------------------------------
-    function transferFrom(address _from, address _to, uint _amount)
-    public
-    returns (bool success) {
-        require(_to != address(0));
-        require(_to != address(this));
-        balances[_from] = balances[_from].sub(_amount);
-        allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_amount);
-        balances[_to] = balances[_to].add(_amount);
-        emit Transfer(_from, _to, _amount);
-        return true;
-    }
-
-    // ------------------------------------------------------------------------
-    // Token owner can approve for `spender` to transferFrom(...) `tokens`
-    // from the token owner's account
-    // ------------------------------------------------------------------------
-    function approve(address _spender, uint _amount)
-    public
-    returns (bool success) {
-        allowed[msg.sender][_spender] = _amount;
-        emit Approval(msg.sender, _spender, _amount);
-        return true;
-    }
-
-
-    // ------------------------------------------------------------------------
-    // Token holder can notify a contract that it has been approved
-    // to spend _amount of tokens
-    // ------------------------------------------------------------------------
-    function approveAndCall(address _spender, uint _amount, bytes _data)
-    public
-    returns (bool success) {
-        allowed[msg.sender][_spender] = _amount;
-        emit Approval(msg.sender, _spender, _amount);
-        ApproveAndCallFallBack(_spender).receiveApproval(msg.sender, _amount, this, _data);
-        return true;
-    }
+    // // ------------------------------------------------------------------------
+    // // Transfer _amount of tokens if _from has allowed msg.sender to do so
+    // //  _from must have enough tokens + must have approved msg.sender
+    // // ------------------------------------------------------------------------
+    // function transferFrom(address _from, address _to, uint _amount)
+    // public
+    // returns (bool success) {
+    //     require(_to != address(0));
+    //     require(_to != address(this));
+    //     balances[_from] = balances[_from].sub(_amount);
+    //     allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_amount);
+    //     balances[_to] = balances[_to].add(_amount);
+    //     emit Transfer(_from, _to, _amount);
+    //     return true;
+    // }
+    //
+    // // ------------------------------------------------------------------------
+    // // Token owner can approve for `spender` to transferFrom(...) `tokens`
+    // // from the token owner's account
+    // // ------------------------------------------------------------------------
+    // function approve(address _spender, uint _amount)
+    // public
+    // returns (bool success) {
+    //     allowed[msg.sender][_spender] = _amount;
+    //     emit Approval(msg.sender, _spender, _amount);
+    //     return true;
+    // }
+    //
+    //
+    // // ------------------------------------------------------------------------
+    // // Token holder can notify a contract that it has been approved
+    // // to spend _amount of tokens
+    // // ------------------------------------------------------------------------
+    // function approveAndCall(address _spender, uint _amount, bytes _data)
+    // public
+    // returns (bool success) {
+    //     allowed[msg.sender][_spender] = _amount;
+    //     emit Approval(msg.sender, _spender, _amount);
+    //     ApproveAndCallFallBack(_spender).receiveApproval(msg.sender, _amount, this, _data);
+    //     return true;
+    // }
 
     // ------------------------------------------------------------------------
     // Returns the number of tokens in circulation
