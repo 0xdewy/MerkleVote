@@ -55,6 +55,7 @@ contract('MerkleVote', async(accounts) => {
     let parameterHash = await hash.getParameterHash(receiveTransfer, 5000*WEI);
     voteID = await hash.getVoteID(token.address, methodID , parameterHash);
     await merkleVote.createVote(users, voteID);
+    console.log("merkle root for voteID: ", voteID, "is: ", await merkleVote.merkleRoot(voteID));
   });
 
 });

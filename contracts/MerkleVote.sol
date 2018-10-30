@@ -12,7 +12,7 @@ contract MerkleVote {
   Token public votingToken;
 
   mapping (bytes32 => bool) public voted;     // sha3(functionVoteID, msg.sender) => boolean
-  mapping (bytes32 => uint) public numVotes;    // sha3(contractAddress, methodID, parameterHash)  => numberOfVotes
+  mapping (bytes32 => uint) public numVotes;    // voteID  => numberOfVotes
   mapping (bytes32 => bytes32) public merkleRoot;   //  root node of a vote merkle tree
 
   constructor(address _votingToken)
@@ -24,9 +24,11 @@ contract MerkleVote {
   external
   returns (bool) {
     require(merkleRoot[_voteID] == _root);
+    require(!voted[keccak256(abi.encodePacked(voteID, msg.sender))]); 
     bytes32 computedElement = keccak256(abi.encodePacked(msg.sender, _balanceAtSnapshot));
     require(verifyProof(_proof, _root, computedElement));
     numVotes[_voteID] += _balanceAtSnapshot;
+    voted[keccak256(abi.encodePacked(voteID, msg.sender))] = true;
     return true;
   }
 
@@ -35,7 +37,7 @@ contract MerkleVote {
   returns (bool) {
       bytes32[] memory elements = prepareTree(_tokenHolders);
       bytes32 root = createRootProof(elements);
-      // merkleRoot[_voteID] = root;
+      merkleRoot[_voteID] = root;
       return true;
   }
 
