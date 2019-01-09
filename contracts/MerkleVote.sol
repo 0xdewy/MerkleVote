@@ -1,4 +1,4 @@
-pragma solidity 0.4.24;
+pragma solidity 0.5.0;
 
 interface Token {
   function totalSupply() external view returns (uint256);
@@ -6,6 +6,7 @@ interface Token {
 }
 
 import './SafeMath.sol';
+
 
 contract MerkleVote {
 
@@ -20,34 +21,34 @@ contract MerkleVote {
       votingToken = Token(_votingToken);
   }
 
-  function vote(bytes32 _voteID, uint _balanceAtSnapshot, bytes32 _root, bytes32[] _proof)
+  function vote(bytes32 _voteID, uint _balanceAtSnapshot, bytes32 _root, bytes32[] calldata _proof)
   external
   returns (bool) {
     require(merkleRoot[_voteID] == _root);
     require(!voted[keccak256(abi.encodePacked(_voteID, msg.sender))]);
-    bytes32 computedElement = keccak256(abi.encodePacked(msg.sender, _balanceAtSnapshot));
-    require(verifyProof(_proof, _root, computedElement));
-    numVotes[_voteID] += _balanceAtSnapshot;
+    require(verifyProof(_proof, _root, leaf(msg.sender, _balanceAtSnapshot)));
     voted[keccak256(abi.encodePacked(_voteID, msg.sender))] = true;
+    numVotes[_voteID] += _balanceAtSnapshot;
     return true;
   }
 
-  function createVote(address[] _tokenHolders, bytes32 _voteID)
+  function createVote(address[] memory _tokenHolders, bytes32 _voteID)
   public
   returns (bool) {
-      bytes32[] memory elements = prepareTree(_tokenHolders);
-      bytes32 root = createRootProof(elements);
+      require(_tokenHolders.length < 200);
+      bytes32[] memory elements = hashRawData(_tokenHolders);
+      bytes32 root = createTree(elements);
       merkleRoot[_voteID] = root;
       return true;
   }
 
 
-  function createRootProof(bytes32[] elements)
+  function createTree(bytes32[] memory elements)
   public
   pure
   returns (bytes32) {
-    // bytes32[] memory nextElements = new bytes32[](elements.length);
     uint16 numElements = uint16(elements.length);
+    if (numElements == 1) { return keccak256(abi.encodePacked(elements[0])); }
     while (numElements > 1) {
       for (uint i = 0; i < numElements; i+=2) {
         elements[i] = getHash(elements[i], elements[i+1]);
@@ -61,32 +62,52 @@ contract MerkleVote {
     return elements[0];
   }
 
-  function prepareTree(address[] _tokenHolders)
+  function hashRawData(address[] memory _tokenHolders)
   public
   view
-  returns (bytes32[]) {
+  returns (bytes32[] memory elements) {
     uint totalSupply;
     uint16 numLeafs = uint16((_tokenHolders.length / 2) + (_tokenHolders.length % 2));
-    bytes32[] memory elements = new bytes32[](numLeafs);
-    bytes32 leaf;
-    for (uint256 i = 0; i < _tokenHolders.length; i += 2) {
+    elements = new bytes32[](numLeafs);
+    bytes32 node;
+    uint16 counter;
+    for (uint16 i = 0; i < _tokenHolders.length; i += 2) {
       uint balanceOne = votingToken.balanceOf(_tokenHolders[i]);
       require(balanceOne > 0);   // only token holders
       uint balanceTwo = votingToken.balanceOf(_tokenHolders[i+1]);
       require(balanceTwo > 0);
       totalSupply += balanceOne + balanceTwo;
-      bytes32 firstElem = keccak256(abi.encodePacked(_tokenHolders[i], balanceOne));
-      bytes32 secondElem = keccak256(abi.encodePacked(_tokenHolders[i+1], balanceTwo));
-      leaf = getHash(firstElem, secondElem);
-      elements[i / 2] = leaf;
+      bytes32 firstLeaf = leaf(_tokenHolders[i], balanceOne);
+      bytes32 secondLeaf = leaf(_tokenHolders[i+1], balanceTwo);
+      node = getHash(firstLeaf, secondLeaf);
+      elements[counter] = node;
+      counter++;
     }
     if (_tokenHolders.length % 2 != 0){
-      leaf = keccak256(abi.encodePacked( _tokenHolders[i], balanceOne));
-      elements[numLeafs -1] = leaf;
+      address thisHolder = _tokenHolders[_tokenHolders.length-1];
+      node = leaf(thisHolder , votingToken.balanceOf(thisHolder));
+      elements[counter] = node;
     }
 
-    assert(totalSupply == votingToken.totalSupply());
+    // assert(totalSupply == votingToken.totalSupply());
     return elements;
+  }
+
+  function hashLayer(bytes32[] memory elements)
+  public
+  pure
+  returns (bytes32[] memory){
+    uint16 numElementsNextLayer = uint16((elements.length / 2) + (elements.length % 2));
+    bytes32[] memory layer = new bytes32[](numElementsNextLayer);
+    uint16 counter;
+    for (uint i = 0; i < elements.length; i+=2) {
+      layer[counter] = getHash(elements[i], elements[i+1]);
+      counter++;
+    }
+    if (elements.length % 2 != 0){
+      layer[counter] = keccak256(abi.encodePacked(elements[elements.length-1]));
+    }
+    return layer;
   }
 
   /**
@@ -96,20 +117,13 @@ contract MerkleVote {
    * @param _root Merkle root
    * @param _leaf Leaf of Merkle tree
    */
-  function verifyProof(bytes32[] _proof, bytes32 _root, bytes32 _leaf)
+  function verifyProof(bytes32[] memory _proof, bytes32 _root, bytes32 _leaf)
   public
   pure
   returns (bool) {
     bytes32 computedHash = _leaf;
     for (uint256 i = 0; i < _proof.length; i++) {
-      bytes32 proofElement = _proof[i];
-      if (computedHash < proofElement) {
-        // Hash(current computed hash + current element of the proof)
-        computedHash = keccak256(abi.encodePacked(computedHash, proofElement));
-      } else {
-        // Hash(current element of the proof + current computed hash)
-        computedHash = keccak256(abi.encodePacked(proofElement, computedHash));
-      }
+      computedHash = getHash(computedHash, _proof[i]);
     }
     return computedHash == _root;
   }
@@ -124,6 +138,13 @@ contract MerkleVote {
     else{
       return keccak256(abi.encodePacked(_secondElem, _firstElem));
     }
+  }
+
+  function leaf(address _user, uint _balance)
+  public
+  pure
+  returns (bytes32) {
+    return keccak256(abi.encodePacked(_user, _balance));
   }
 
 

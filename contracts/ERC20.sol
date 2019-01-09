@@ -1,7 +1,7 @@
-pragma solidity 0.4.24;
+pragma solidity 0.5.0;
 
 
-interface ApproveAndCallFallBack { function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData) external; }
+interface ApproveAndCallFallBack { function receiveApproval(address _from, uint256 _value, address _token, bytes calldata _extraData) external; }
 
 import './SafeMath.sol';
 // ------------------------------------------------------------------------
@@ -29,7 +29,7 @@ contract ERC20 {
     // ------------------------------------------------------------------------
     // Constructor
     // ------------------------------------------------------------------------
-    constructor(uint _initialAmount, string _tokenName, uint8 _decimalUnits, string _tokenSymbol)
+    constructor(uint _initialAmount, string memory _tokenName, uint8 _decimalUnits, string memory _tokenSymbol)
     public {
         balances[msg.sender] = _initialAmount;               // Give the creator all initial tokens
         supply = _initialAmount;                        // Update total supply
@@ -133,7 +133,7 @@ contract ERC20 {
     // Won't accept ETH
     // ------------------------------------------------------------------------
     function ()
-    public
+    external
     payable {
         revert();
     }

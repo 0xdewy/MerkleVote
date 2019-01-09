@@ -1,8 +1,33 @@
 var bn = require('bignumber.js');
 
+
 const ERC20 =  artifacts.require('./ERC20.sol');
 const MerkleVote = artifacts.require('./MerkleVote.sol');
 const HashHelpers = artifacts.require('./HashHelpers.sol');
+
+function getIndex(array, item){
+    for (let i=0; i < array.length; i++){
+        if (array[i] == item) { return i; }
+    }
+    throw "leaf is not found in tree";
+}
+
+async function getSiblings (merkleVote, leafs, root, leaf) {
+  let siblings = []
+  let layer = []
+  let height = Math.log2(leafs.length + 1);
+  let index = getIndex(leafs, leaf);
+  if (index == leafs.length -1) { siblings.push(leaf); }
+  if (index % 2 == 0 ) { siblings.push(leafs[index+1]); }
+  else { siblings.push(leafs[index-1]); }
+
+  for (let i =0; i <= height; i++) {
+    layer = await merkleVote.hashLayer(leafs);
+    index = (index / 2) + (index % 2);
+    siblings.push(layer[index-1]);
+  }
+  return siblings;
+}
 
 contract('MerkleVote', async(accounts) => {
 
@@ -10,9 +35,12 @@ contract('MerkleVote', async(accounts) => {
   let proof;
   let voteID;
 
-  let WEI = 1000000000000000000;
-  let totalSupply = 10000000 * WEI;  // 10 mil
+  let wei = 1000000000000000000;
+  let totalSupply = bn(10000000).times(1000000000000);  // 10 mil
 
+
+
+  const owner = accounts[0];
   const user1 = accounts[1];
   const user2 = accounts[2];
   const user3 = accounts[3];
@@ -21,7 +49,7 @@ contract('MerkleVote', async(accounts) => {
 
   users = [user1, user2, user3, user4];
 
-  let tokenPerUser = totalSupply / users.length;
+  let tokenPerUser = totalSupply.div(users.length);
 
   let token;
   let merkleVote;
@@ -30,7 +58,7 @@ contract('MerkleVote', async(accounts) => {
   let tree;
 
   it('Deploy erc20', async() => {
-    token = await ERC20.new(totalSupply, 'SomeToken', 18, 'ST');
+    token = await ERC20.new(totalSupply, "SomeToken", 18, "ST");
   });
 
   it('Distribute token equally', async() => {
@@ -55,9 +83,9 @@ contract('MerkleVote', async(accounts) => {
   it('Create new vote', async() => {
     let methodString = "transfer(address, uint256)";
     let methodID = await hash.getMethodID(methodString);
-    let parameterHash = await hash.getParameterHash(receiveTransfer, 5000*WEI);
+    let parameterHash = await hash.getParameterHash(receiveTransfer, bn(5000).times(1000000000000));
     voteID = await hash.getVoteID(token.address, methodID , parameterHash);
-    tree = await merkleVote.prepareTree(users);
+    tree = await merkleVote.hashRawData(users);
     console.log("leafs of tree: ", tree);
     await merkleVote.createVote(users, voteID);
     root = await merkleVote.merkleRoot(voteID);
@@ -75,4 +103,12 @@ contract('MerkleVote', async(accounts) => {
     assert.equal(valid, true);
   });
 
+  // TODO: hash raw data to bytes32 before combining hashes
+
+  // it ("test sibling creation", async() => {
+  //     let leaf = await hash.leaf(user1, await token.balanceOf(user1));
+  //     console.log("leaf is ", leaf);
+  //     console.log("tree is ", tree);
+  //     console.log(await getSiblings(merkleVote, tree, root, leaf));
+  // });
 });
