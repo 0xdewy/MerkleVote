@@ -23,20 +23,25 @@
 module.exports = {
   // See <http://truffleframework.com/docs/advanced/configuration>
   // to customize your Truffle configuration!
-  networks: {
-    development: {
-      host: "localhost",
-      port: 8545,
-      gas: 6500000,
-      network_id: "*",
-      gasPrice: 1
+    networks: {
+        development: {
+          host: "localhost",
+          port: 8545,
+          gas: 6500000,
+          network_id: "*",
+          gasPrice: 1
+        },
+        ropsten: {
+          provider: function() {
+            return new HDWalletProvider(mnemonic, "https://ropsten.infura.io/v3/" + infura_key)
+          },
+          network_id: 3,
+          gas: 8000000
+        }
     },
-    ropsten: {
-      provider: function() {
-        return new HDWalletProvider(mnemonic, "https://ropsten.infura.io/v3/" + infura_key)
-      },
-      network_id: 3,
-      gas: 8000000
+    compilers: {
+       solc: {
+         version: "0.5.2"  // ex:  "0.4.20". (Default: Truffle's installed solc)
+       }
     }
-  }
 };

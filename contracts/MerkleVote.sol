@@ -1,4 +1,4 @@
-pragma solidity 0.5.0;
+pragma solidity >=0.5.0 <0.6.0;
 
 interface Token {
   function totalSupply() external view returns (uint256);
@@ -10,35 +10,44 @@ import './SafeMath.sol';
 
 contract MerkleVote {
 
-  Token public votingToken;
-
-  mapping (bytes32 => bool) public voted;     // sha3(functionVoteID, msg.sender) => boolean
-  mapping (bytes32 => uint) public numVotes;    // voteID  => numberOfVotes
-  mapping (bytes32 => bytes32) public merkleRoot;   //  root node of a vote merkle tree
-
-  constructor(address _votingToken)
-  public {
-      votingToken = Token(_votingToken);
+  struct Vote {
+      address token;
+      uint256 yesVotes;
+      uint256 noVotes;
+      bytes32 root;
+      mapping (address => bool) voted;
   }
 
-  function vote(bytes32 _voteID, uint _balanceAtSnapshot, bytes32 _root, bytes32[] calldata _proof)
+  mapping (bytes32 => Vote) public votes;
+
+
+  // constructor()
+  // public {
+  // }
+
+  function vote(bytes32 _voteID, bool _voteYes, uint256 _balanceAtSnapshot, bytes32 _root, bytes32[] calldata _proof)
   external
   returns (bool) {
-    require(merkleRoot[_voteID] == _root);
-    require(!voted[keccak256(abi.encodePacked(_voteID, msg.sender))]);
+    Vote storage thisVote = votes[_voteID];
+    require(thisVote.root == _root);
+    require(!thisVote.voted[msg.sender]);
     require(verifyProof(_proof, _root, leaf(msg.sender, _balanceAtSnapshot)));
-    voted[keccak256(abi.encodePacked(_voteID, msg.sender))] = true;
-    numVotes[_voteID] += _balanceAtSnapshot;
+    thisVote.voted[msg.sender] = true;
+    if (_voteYes) { thisVote.yesVotes += _balanceAtSnapshot; }
+    else { thisVote.noVotes += _balanceAtSnapshot; }
     return true;
   }
 
-  function createVote(address[] memory _tokenHolders, bytes32 _voteID)
+  function createVote(address _token, address[] memory _tokenHolders, bytes32 _voteID)
   public
   returns (bool) {
       require(_tokenHolders.length < 200);
-      bytes32[] memory elements = hashRawData(_tokenHolders);
+      Vote storage newVote = votes[_voteID];
+      require(newVote.token == address(0));
+      newVote.token = _token;
+      bytes32[] memory elements = hashRawData(_token, _tokenHolders);
       bytes32 root = createTree(elements);
-      merkleRoot[_voteID] = root;
+      newVote.root = root;
       return true;
   }
 
@@ -54,7 +63,7 @@ contract MerkleVote {
         elements[i] = getHash(elements[i], elements[i+1]);
       }
       if (elements.length % 2 != 0){
-        elements[(numElements / 2) + 1] = keccak256(abi.encodePacked(elements[numElements-1]));
+        elements[(numElements / 2) + 1] = keccak256(abi.encodePacked(elements[numElements-1], elements[numElements-1]));
         numElements = (numElements / 2) + 1;
       }
       else { numElements = numElements / 2; }
@@ -62,33 +71,19 @@ contract MerkleVote {
     return elements[0];
   }
 
-  function hashRawData(address[] memory _tokenHolders)
+  function hashRawData(address _token, address[] memory _tokenHolders)
   public
   view
   returns (bytes32[] memory elements) {
-    uint totalSupply;
-    uint16 numLeafs = uint16((_tokenHolders.length / 2) + (_tokenHolders.length % 2));
-    elements = new bytes32[](numLeafs);
-    bytes32 node;
-    uint16 counter;
-    for (uint16 i = 0; i < _tokenHolders.length; i += 2) {
-      uint balanceOne = votingToken.balanceOf(_tokenHolders[i]);
-      require(balanceOne > 0);   // only token holders
-      uint balanceTwo = votingToken.balanceOf(_tokenHolders[i+1]);
-      require(balanceTwo > 0);
-      totalSupply += balanceOne + balanceTwo;
-      bytes32 firstLeaf = leaf(_tokenHolders[i], balanceOne);
-      bytes32 secondLeaf = leaf(_tokenHolders[i+1], balanceTwo);
-      node = getHash(firstLeaf, secondLeaf);
-      elements[counter] = node;
-      counter++;
+    elements = new bytes32[](_tokenHolders.length);
+    uint256 balance;
+    uint256 totalSupply;
+    for (uint16 i = 0; i < _tokenHolders.length; i++) {
+      balance = Token(_token).balanceOf(_tokenHolders[i]);
+      require(balance > 0);   // only users with tokens can participate
+      totalSupply += balance;
+      elements[i] = leaf(_tokenHolders[i], balance);
     }
-    if (_tokenHolders.length % 2 != 0){
-      address thisHolder = _tokenHolders[_tokenHolders.length-1];
-      node = leaf(thisHolder , votingToken.balanceOf(thisHolder));
-      elements[counter] = node;
-    }
-
     // assert(totalSupply == votingToken.totalSupply());
     return elements;
   }
@@ -104,8 +99,8 @@ contract MerkleVote {
       layer[counter] = getHash(elements[i], elements[i+1]);
       counter++;
     }
-    if (elements.length % 2 != 0){
-      layer[counter] = keccak256(abi.encodePacked(elements[elements.length-1]));
+    if (elements.length % 2 != 0){    // If odd number of elements, hash the last element with itself
+      layer[counter] = keccak256(abi.encodePacked(elements[elements.length-1], elements[elements.length-1]));
     }
     return layer;
   }

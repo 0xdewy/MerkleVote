@@ -9,24 +9,61 @@ function getIndex(array, item){
     for (let i=0; i < array.length; i++){
         if (array[i] == item) { return i; }
     }
-    throw "leaf is not found in tree";
+    throw "leaf is not found in leafs";
+}
+
+// TODO: root isn't matching what is created by this algorithm.
+async function createTree (merkleVote, leafs) {
+    if (leafs.length < 2) { throw "there are not enough leafs"; }
+    if (leafs.length == 2) { return await merkleVote.getHash(leafs[0], leafs[1]); }
+    let tree = {};
+    let layer = leafs;
+    let height = Math.floor(Math.log2(leafs.length));
+    console.log("height of tree is: " , height);
+    for (let i=0; i <= height; i++){
+        layer = await merkleVote.hashLayer(layer);
+        tree[i] = layer;
+        console.log("adding layer to tree: ", layer);
+    }
+    return tree;
 }
 
 async function getSiblings (merkleVote, leafs, root, leaf) {
-  let siblings = []
-  let layer = []
-  let height = Math.log2(leafs.length + 1);
-  let index = getIndex(leafs, leaf);
-  if (index == leafs.length -1) { siblings.push(leaf); }
-  if (index % 2 == 0 ) { siblings.push(leafs[index+1]); }
-  else { siblings.push(leafs[index-1]); }
-
-  for (let i =0; i <= height; i++) {
-    layer = await merkleVote.hashLayer(leafs);
-    index = (index / 2) + (index % 2);
-    siblings.push(layer[index-1]);
-  }
-  return siblings;
+    let siblings = []
+    let computedHash;
+    let index = getIndex(leafs, leaf);
+    let tree = await createTree(merkleVote, leafs);
+    let height = Math.floor(Math.log2(leafs.length));
+    console.log("height is: ", height);
+    console.log("tree is: ");
+    console.log(tree);
+    console.log("index is ", index);
+    // Leaf is last element???
+    if (index == leafs.length -1) {   // If it is the last leaf then sibling is the hash of itself all the way up
+        siblings.push(leaf);
+        computedHash = leaf;
+        for (let i=0; i < height-1; i++){
+            computedHash = merkleVote.getHash(computedHash, computedHash);
+            siblings.push(computedHash);
+        }
+        siblings.push(tree[height-1][0])   // push the first node of the layer below root node for final hash
+        return siblings;
+    }
+    else {
+        computedHash = leaf;
+        for (let i =0; i <= height; i++) {
+            index = getIndex(tree[i], computedHash);
+            if (index % 2 == 0 ) {       // If index is even number then the next leaf in the list will be the sibling
+                siblings.push(tree[i][index+1]);
+                computedHash = merkleVote.getHash(computedHash, tree[i][index+1]);
+            }
+            else {
+                siblings.push(tree[i][index-1]);
+                computedHash = merkleVote.getHash(computedHash, tree[i][index-1]);
+            }
+        }
+        return siblings;
+    }
 }
 
 contract('MerkleVote', async(accounts) => {
@@ -38,7 +75,7 @@ contract('MerkleVote', async(accounts) => {
   let wei = 1000000000000000000;
   let totalSupply = bn(10000000).times(1000000000000);  // 10 mil
 
-
+  let vote = {};
 
   const owner = accounts[0];
   const user1 = accounts[1];
@@ -55,7 +92,7 @@ contract('MerkleVote', async(accounts) => {
   let merkleVote;
   let hash;
 
-  let tree;
+  let leafs;
 
   it('Deploy erc20', async() => {
     token = await ERC20.new(totalSupply, "SomeToken", 18, "ST");
@@ -74,7 +111,7 @@ contract('MerkleVote', async(accounts) => {
 
 
   it('Deploy merkle vote contract', async() => {
-    merkleVote = await MerkleVote.new(token.address);
+    merkleVote = await MerkleVote.new();
   });
 
   //           [0xA37]                           (root)
@@ -85,30 +122,30 @@ contract('MerkleVote', async(accounts) => {
     let methodID = await hash.getMethodID(methodString);
     let parameterHash = await hash.getParameterHash(receiveTransfer, bn(5000).times(1000000000000));
     voteID = await hash.getVoteID(token.address, methodID , parameterHash);
-    tree = await merkleVote.hashRawData(users);
-    console.log("leafs of tree: ", tree);
-    await merkleVote.createVote(users, voteID);
-    root = await merkleVote.merkleRoot(voteID);
-    assert.equal(await merkleVote.getHash(tree[0], tree[1]), root);
-    console.log("merkle root for voteID: ", voteID, "is: ", root);
+    leafs = await merkleVote.hashRawData(token.address, users);
+    console.log("leaf leafs: ", leafs);
+    await merkleVote.createVote(token.address, users, voteID);
+    console.log("vote id is: ", vote.voteID);
+    vote = await merkleVote.votes(voteID);
+    assert.equal(vote.token, token.address);
+    console.log("merkle root for voteID: ", voteID, "is: ", vote.root);
   });
 
 
-  it ("Verify merkle tree for user1", async() => {
-    let merkleProof = [await hash.leaf(user2, await token.balanceOf(user2))];
-    merkleProof[1] = tree[1];
-    console.log("merkle proof is: ", merkleProof);
-    let leaf = await hash.leaf(user1, await token.balanceOf(user1));
-    let valid = await merkleVote.verifyProof(merkleProof, root, leaf);
-    assert.equal(valid, true);
-  });
-
-  // TODO: hash raw data to bytes32 before combining hashes
-
-  // it ("test sibling creation", async() => {
-  //     let leaf = await hash.leaf(user1, await token.balanceOf(user1));
-  //     console.log("leaf is ", leaf);
-  //     console.log("tree is ", tree);
-  //     console.log(await getSiblings(merkleVote, tree, root, leaf));
+  // it ("Verify merkle leafs for user1", async() => {
+  //   let merkleProof = [await hash.leaf(user2, await token.balanceOf(user2))];
+  //   merkleProof[1] = leafs[1];
+  //   console.log("merkle proof is: ", merkleProof);
+  //   let leaf = await hash.leaf(user1, await token.balanceOf(user1));
+  //   let valid = await merkleVote.verifyProof(merkleProof, root, leaf);
+  //   assert.equal(valid, true);
   // });
+
+
+  it ("test sibling creation for user1", async() => {
+      let leaf = await hash.leaf(user1, await token.balanceOf(user1));
+      console.log("user 1 leaf ", leaf);
+      console.log("all leafs ", leafs);
+      console.log(await getSiblings(merkleVote, leafs, root, leaf));
+  });
 });
