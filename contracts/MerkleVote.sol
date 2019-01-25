@@ -57,18 +57,43 @@ contract MerkleVote {
   pure
   returns (bytes32) {
     uint16 numElements = uint16(elements.length);
-    if (numElements == 1) { return keccak256(abi.encodePacked(elements[0])); }
+    if (numElements == 1) { return getHash(elements[0], elements[0]); }  // Hash element with itself
     while (numElements > 1) {
-      for (uint i = 0; i < numElements; i+=2) {
-        elements[i] = getHash(elements[i], elements[i+1]);
-      }
-      if (elements.length % 2 != 0){
-        elements[(numElements / 2) + 1] = keccak256(abi.encodePacked(elements[numElements-1], elements[numElements-1]));
-        numElements = (numElements / 2) + 1;
-      }
-      else { numElements = numElements / 2; }
+      // uint16 counter;   // counter represents number of elements in each layer as tree gets constructed
+      // for (uint i = 0; i < numElements; i+=2) {
+      //   elements[counter] = getHash(elements[i], elements[i+1]);
+      //   counter++;
+      // }
+      elements = hashLayer(elements);
+      numElements = (numElements / 2) + (numElements % 2);
+      // if (numElements % 2 != 0){        // If odd number of elements, the last element gets hashed with itself
+      //   elements[counter] = getHash(elements[numElements-1], elements[numElements-1]);
+      //   numElements = (numElements / 2) + 1;
+      // }
+      // else { numElements = numElements / 2; }
     }
     return elements[0];
+  }
+
+  function hashLayer(bytes32[] memory elements)
+  public
+  pure
+  returns (bytes32[] memory){
+    require(elements.length > 1);
+    bytes32[] memory layer = new bytes32[]((elements.length / 2) + (elements.length % 2));
+    if (elements.length == 2) {
+        layer[0] = getHash(elements[0], elements[1]);
+        return layer;
+    }
+    uint16 counter;
+    for (uint i = 0; i < elements.length; i+=2) {
+      layer[counter] = getHash(elements[i], elements[i+1]);
+      counter++;
+    }
+    if (elements.length % 2 != 0){    // If odd number of elements, hash the last element with itself
+      layer[counter] = getHash(elements[elements.length-1], elements[elements.length-1]);
+    }
+    return layer;
   }
 
   function hashRawData(address _token, address[] memory _tokenHolders)
@@ -84,25 +109,8 @@ contract MerkleVote {
       totalSupply += balance;
       elements[i] = leaf(_tokenHolders[i], balance);
     }
-    // assert(totalSupply == votingToken.totalSupply());
+    assert(totalSupply == Token(_token).totalSupply());
     return elements;
-  }
-
-  function hashLayer(bytes32[] memory elements)
-  public
-  pure
-  returns (bytes32[] memory){
-    uint16 numElementsNextLayer = uint16((elements.length / 2) + (elements.length % 2));
-    bytes32[] memory layer = new bytes32[](numElementsNextLayer);
-    uint16 counter;
-    for (uint i = 0; i < elements.length; i+=2) {
-      layer[counter] = getHash(elements[i], elements[i+1]);
-      counter++;
-    }
-    if (elements.length % 2 != 0){    // If odd number of elements, hash the last element with itself
-      layer[counter] = keccak256(abi.encodePacked(elements[elements.length-1], elements[elements.length-1]));
-    }
-    return layer;
   }
 
   /**
