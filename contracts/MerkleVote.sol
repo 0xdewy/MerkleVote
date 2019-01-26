@@ -7,7 +7,9 @@ interface Token {
 
 import './SafeMath.sol';
 
-
+// @title On-chain merkle tree construction and verification used to do ERC20 based voting
+// @notice This contract uses a merkle tree to store user balances of any ERC20 token to construct a snapshot to use for votes.
+// @dev To construt a proof, you must construct the siblings originating from the leaf of message sender. leaf = sha3(address, balance)
 contract MerkleVote {
 
   struct Vote {
@@ -21,10 +23,9 @@ contract MerkleVote {
   mapping (bytes32 => Vote) public votes;
 
 
-  // constructor()
-  // public {
-  // }
 
+  // @notice Once a vote is create, can call this function to cast a vote from any token holder included in createVote()
+  // @dev Create the proof by constructing an array of elements that are to be hashed with elements originating from msg.sender leaf
   function vote(bytes32 _voteID, bool _voteYes, uint256 _balanceAtSnapshot, bytes32 _root, bytes32[] calldata _proof)
   external
   returns (bool) {
@@ -38,20 +39,22 @@ contract MerkleVote {
     return true;
   }
 
+  // @notice Create a new vote from any ERC20 token. Only included token holders are eligble to vote
+  // TODO: duplicate addresses
   function createVote(address _token, address[] memory _tokenHolders, bytes32 _voteID)
   public
   returns (bool) {
-      require(_tokenHolders.length < 200);
+      // require(_tokenHolders.length < 1000);
       Vote storage newVote = votes[_voteID];
       require(newVote.token == address(0));
       newVote.token = _token;
       bytes32[] memory elements = hashRawData(_token, _tokenHolders);
-      bytes32 root = createTree(elements);
-      newVote.root = root;
+      newVote.root = createTree(elements);
       return true;
   }
 
 
+  // @notice constructs a merkle tree from an array of given elements. Returns root hash.
   function createTree(bytes32[] memory elements)
   public
   pure
@@ -59,36 +62,29 @@ contract MerkleVote {
     uint16 numElements = uint16(elements.length);
     if (numElements == 1) { return getHash(elements[0], elements[0]); }  // Hash element with itself
     while (numElements > 1) {
-      // uint16 counter;   // counter represents number of elements in each layer as tree gets constructed
-      // for (uint i = 0; i < numElements; i+=2) {
-      //   elements[counter] = getHash(elements[i], elements[i+1]);
-      //   counter++;
-      // }
       elements = hashLayer(elements);
       numElements = (numElements / 2) + (numElements % 2);
-      // if (numElements % 2 != 0){        // If odd number of elements, the last element gets hashed with itself
-      //   elements[counter] = getHash(elements[numElements-1], elements[numElements-1]);
-      //   numElements = (numElements / 2) + 1;
-      // }
-      // else { numElements = numElements / 2; }
     }
     return elements[0];
   }
 
+  // @notice Hash a layer of elements and return the next layer
   function hashLayer(bytes32[] memory elements)
   public
   pure
-  returns (bytes32[] memory){
+  returns (bytes32[] memory layer){
     require(elements.length > 1);
-    bytes32[] memory layer = new bytes32[]((elements.length / 2) + (elements.length % 2));
+    uint256 layerLength = (elements.length / 2);
+    layer = new bytes32[](layerLength + (elements.length % 2));
+
     if (elements.length == 2) {
         layer[0] = getHash(elements[0], elements[1]);
         return layer;
-    }
-    uint16 counter;
-    for (uint i = 0; i < elements.length; i+=2) {
-      layer[counter] = getHash(elements[i], elements[i+1]);
-      counter++;
+     }
+    uint256 counter = 0;
+    for (uint256 index = 0; counter < layerLength; counter++){
+        layer[counter] = getHash(elements[index], elements[index+1]);
+        index = index + 2;
     }
     if (elements.length % 2 != 0){    // If odd number of elements, hash the last element with itself
       layer[counter] = getHash(elements[elements.length-1], elements[elements.length-1]);
@@ -96,6 +92,7 @@ contract MerkleVote {
     return layer;
   }
 
+  // @notice take token holder data and return an array of leafs
   function hashRawData(address _token, address[] memory _tokenHolders)
   public
   view
@@ -109,7 +106,6 @@ contract MerkleVote {
       totalSupply += balance;
       elements[i] = leaf(_tokenHolders[i], balance);
     }
-    assert(totalSupply == Token(_token).totalSupply());
     return elements;
   }
 
@@ -131,6 +127,7 @@ contract MerkleVote {
     return computedHash == _root;
   }
 
+  // @notice Returns the sha3 hash of two elements
   function getHash(bytes32 _firstElem, bytes32 _secondElem)
   public
   pure
@@ -143,6 +140,7 @@ contract MerkleVote {
     }
   }
 
+  // @notice Computes the sha3 hash of token holder data
   function leaf(address _user, uint _balance)
   public
   pure

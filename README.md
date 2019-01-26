@@ -1,43 +1,19 @@
 # MerkleVote
-A way to prove token balances using a merkle tree snapshot.  
+A small project to play with storing large chunks of data into a merkle root and executing on-chain logic using data from these merkle proofs. The contract creates a snapshot of token holder balances by constructing a merkle tree, saving only the root hash. Later when the token holders balance needs to be verified the contract can efficiently prove the balance and securely execute it's functionality, which in this case is a vote. This method can be used to create a balance snapshot for communities smaller than 2000 that have any current ERC20 token. This seems to be the current limitation of the merkle tree construction, although this contract could be greatly optimized.
 
-### Token Snapshot
-The contract receives a list of tokenholders and the token address and creates a merkle tree by looping through all token holders.
+# Benefits and Costs
+Using a merkle construction allows for a cheaper overall gas costs for taking token snapshots. It has the benefit that you can import thousands of token holders at once, instead of amortizing the work to each individual token holder through a deposit/staking process. This process has limitations if the use case requires a stake to punish bad actors. It also isn't very useful as it doesn't guarantee that every token holder is included in the vote, although this could be added in for tokens that contain less than 1500 users, by verifying all users have been added by checking the tokens total supply.
 
-Each leaf of the tree consists of a ethereum address and their token balance
-```javascript
-sha3(userAddress, tokenBalance)
-```
 
-When generating the merkle tree, the token total supply is counted and must match what the token contract returns, to ensure no balances are missing.
+# Gas Costs
+Some initial tests show that gas costs for constructing a merkle tree & voting body:
 
-### How to use
+* 1000 token holders: 4,958,146
+* 500 token holders: 2,476,162
+* 100 token holders: 638,009
+* 10 token holders: 112,788
 
-You can setup a vote using `createVote`:
-```javascript
-function createVote(address[] _tokenHolders, bytes32 _voteID)
-public
-returns (bool) {
-    bytes32[] memory elements = prepareTree(_tokenHolders);
-    bytes32 root = createRootProof(elements);
-    merkleRoot[_voteID] = root;
-    return true;
-}
-```
 
-Once the token snapshot is created and the merkle root is stored you can vote using `vote()`:
-```javascript
-function vote(bytes32 _voteID, uint _balanceAtSnapshot, bytes32 _root, bytes32[] _proof)
-external
-returns (bool) {
-  require(merkleRoot[_voteID] == _root);
-  require(!voted[keccak256(abi.encodePacked(_voteID, msg.sender))]);
-  bytes32 computedElement = keccak256(abi.encodePacked(msg.sender, _balanceAtSnapshot));
-  require(verifyProof(_proof, _root, computedElement));
-  numVotes[_voteID] += _balanceAtSnapshot;
-  voted[keccak256(abi.encodePacked(_voteID, msg.sender))] = true;
-  return true;
-}
-```
-`proof` = A list of sibling elements that let you recreate that branch of the merkle tree until the root is reached
-`root` = The root hash of the merkle tree (stored on-chain)
+
+# Issues
+There is a known bug in getSiblings() function within the test files. If you want to kill some bugs feel free to open a pull request.
